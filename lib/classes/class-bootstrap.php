@@ -407,6 +407,7 @@ namespace wpCloud\StatelessMedia {
             'mode',
             'body_rewrite',
             'body_rewrite_types',
+            'sign_url', 
             'bucket',
             'root_dir',
             'key_json',
@@ -616,6 +617,29 @@ namespace wpCloud\StatelessMedia {
       }
 
       /**
+       * 
+       * 
+       * 
+       */
+      public function media_signature($object_url, $time = 600){
+        $expiry = time() + $time;
+        $bucketName = rtrim($this->get( 'sm.bucket' ), '/');
+
+        $mediaName = str_replace($this->get_gs_host(), '', $object_url);
+        $stringPolicy = "GET\n\n\n".$expiry."\n/".$bucketName.$mediaName; // ".$media->contentType."
+
+        $key_json = json_decode($this->settings->get('sm.key_json'), 1);
+        $accessId = $key_json['client_email'];
+        $pkeyid = openssl_get_privatekey($key_json['private_key']); 
+        if (openssl_sign( $stringPolicy, $signature, $pkeyid, 'sha256' )) {
+          $signature = urlencode( base64_encode( $signature ) );
+          // error_log('signed URL: '.$object_url.'?GoogleAccessId='.$accessId.'&Expires='.$expiry.'&Signature='.$signature);
+          return $object_url.'?GoogleAccessId='.$accessId.'&Expires='.$expiry.'&Signature='.$signature;
+        }
+        return $object_url;
+      }
+
+      /**
        * @param $content
        * @return mixed
        */
@@ -629,8 +653,26 @@ namespace wpCloud\StatelessMedia {
             $root_dir = !empty( $root_dir ) ? $root_dir . '/' : false;
             $image_host = $this->get_gs_host();
             $file_ext = $this->replaceable_file_types();
-            $content = preg_replace( '/(href|src)=(\'|")(https?:\/\/'.str_replace('/', '\/', $baseurl).')\/(.+?)('.$file_ext.')(\'|")/i',
-                '$1=$2'.$image_host.'/'.($root_dir?$root_dir:'').'$4$5$6', $content);
+
+            // If Signed URLs are enabled, don't simply return the GCS URLs, but instead sign each one.
+            if ( $this->get( 'sm.sign_urls' ) == 'true' ) {
+              $files_to_replace = preg_match_all( '/(href|src)=(\'|")(https?:\/\/'.str_replace('/', '\/', $baseurl).')\/(.+?)('.$file_ext.')(\'|")/i', $content, $matches);
+              foreach ($matches[0] as $match) {
+                $replacement = preg_replace( '/(href|src)=(\'|")(https?:\/\/'.str_replace('/', '\/', $baseurl).')\/(.+?)('.$file_ext.')(\'|")/i',
+                '$1=$2'.$image_host.'/'.($root_dir?$root_dir:'').'$4$5$6', $match);
+                $object_url = preg_replace( '/(href|src)=(\'|")(https?:\/\/'.str_replace('/', '\/', $baseurl).')\/(.+?)('.$file_ext.')(\'|")/i',
+                $image_host.'/'.($root_dir?$root_dir:'').'$4$5', $match);
+                //error_log('$object_url: '.$object_url);
+                $signed_url = $this->media_signature($object_url);
+                $replacement = str_replace($object_url, $signed_url, $replacement);
+                //error_log('replacement: '.$replacement);
+                
+                $content = str_replace($match, $replacement, $content);
+              }
+            } else {
+              $content = preg_replace( '/(href|src)=(\'|")(https?:\/\/'.str_replace('/', '\/', $baseurl).')\/(.+?)('.$file_ext.')(\'|")/i',
+              '$1=$2'.$image_host.'/'.($root_dir?$root_dir:'').'$4$5$6', $content);
+            }
           }
         }
 
@@ -1116,7 +1158,8 @@ namespace wpCloud\StatelessMedia {
           /* Try to initialize GS Client */
           $this->client = GS_Client::get_instance( array(
             'bucket' => $this->get( 'sm.bucket' ),
-            'key_json' => $key_json
+            'key_json' => $key_json,
+            'sign_urls' => $this->get( 'sm.sign_urls' )
           ) );
         }
 

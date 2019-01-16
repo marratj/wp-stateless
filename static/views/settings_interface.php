@@ -156,6 +156,15 @@
                                         </select>
                                     </p>
                                     <p class="description"><strong ng-bind="sm.showNotice('delete_remote')" ></strong> <?php _e( 'Delete the GCS file when the file is deleted from WordPress.', ud_get_stateless_media()->domain ); ?></p>
+
+                                    <h4><?php _e( 'Enable URL signing', ud_get_stateless_media()->domain ); ?></h4>
+                                    <p>
+                                        <select name="sm[sign_urls]" id="gcs_sign_urls" ng-model="sm.sign_urls" ng-disabled="sm.readonly.sign_urls">
+                                            <option value="true"><?php _e( 'Enable', ud_get_stateless_media()->domain ); ?></option>
+                                            <option value="false"><?php _e( 'Disable', ud_get_stateless_media()->domain ); ?></option>
+                                        </select>
+                                    </p>
+                                    <p class="description"><strong ng-bind="sm.showNotice('sign_urls')" ></strong> <?php _e( 'Sign GCS URLs. If enabled, uploads won\'t be set to public read access and File URL replacement signs all URLs during replacement', ud_get_stateless_media()->domain ); ?></p>
                                 </fieldset>
                             </td>
                         </tr>  

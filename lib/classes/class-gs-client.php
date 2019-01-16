@@ -62,6 +62,7 @@ namespace wpCloud\StatelessMedia {
         global $current_blog;
         $this->bucket = $args[ 'bucket' ];
         $this->key_json = json_decode($args['key_json'], 1);
+        $this->sign_urls = $args[ 'sign_urls' ];
 
         // May be Loading Google SDK....
         if( !class_exists( '\wpCloud\StatelessMedia\Google_Client\Google_Client' ) ) {
@@ -226,13 +227,15 @@ namespace wpCloud\StatelessMedia {
               'predefinedAcl' => 'bucketOwnerFullControl',
           )));
 
+          if ( $this->sign_urls == 'false' ) {
           /* Make Media Public READ for all on success */
-          if (is_object($media)) {
-            $acl = new \wpCloud\StatelessMedia\Google_Client\Google_Service_Storage_ObjectAccessControl();
-            $acl->setEntity('allUsers');
-            $acl->setRole('READER');
+            if (is_object($media)) {
+              $acl = new \wpCloud\StatelessMedia\Google_Client\Google_Service_Storage_ObjectAccessControl();
+              $acl->setEntity('allUsers');
+              $acl->setRole('READER');
 
-            $this->service->objectAccessControls->insert($this->bucket, $name, $acl);
+              $this->service->objectAccessControls->insert($this->bucket, $name, $acl);
+            }
           }
 
         } catch( Exception $e ) {
@@ -261,10 +264,34 @@ namespace wpCloud\StatelessMedia {
           if ( !file_exists( $_dir = dirname( $save_path ) ) ) {
             wp_mkdir_p( $_dir );
           }
-          return $this->client->getHttpClient()->get($media->getMediaLink(), ['save_to' => $save_path] )->getStatusCode();
+          if ( $this->sign_urls == 'true' ) {
+            return $this->client->getHttpClient()->get($this->sign_media_link($media), ['save_to' => $save_path] )->getStatusCode();
+          } else {
+            return $this->client->getHttpClient()->get($media->getMediaLink(), ['save_to' => $save_path] )->getStatusCode();
+          }
         }
 
         return $media;
+      }
+
+      /**
+       * 
+       * 
+       * 
+       */
+      public function sign_media_link($media, $time = 600){
+        $expiry = time() + $time;
+        $bucketName = $media->bucket;
+        $accessId = $this->key_json['client_email'];
+        $stringPolicy = "GET\n\n\n".$expiry."\n/".$bucketName."/".$media->name; // ".$media->contentType."
+        $pkeyid = openssl_get_privatekey($this->key_json['private_key']); 
+        error_log($pkeyid);
+        if (openssl_sign( $stringPolicy, $signature, $pkeyid, 'sha256' )) {
+          $signature = urlencode( base64_encode( $signature ) );
+          //error_log('https://storage.googleapis.com/'.$bucketName."/".$media->name.'?GoogleAccessId='.$accessId.'&Expires='.$expiry.'&Signature='.$signature);
+          return 'https://storage.googleapis.com/'.$bucketName."/".$media->name.'?GoogleAccessId='.$accessId.'&Expires='.$expiry.'&Signature='.$signature;
+        }
+        return $media->getMediaLink();
       }
 
       /**
