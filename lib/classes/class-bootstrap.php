@@ -758,6 +758,9 @@ namespace wpCloud\StatelessMedia {
             $image_host = $this->get_gs_host().'/'.($root_dir?$root_dir:'');
             $file_ext = $this->replaceable_file_types();
             $updated = $this->_convert_to_gs_link($meta, $image_host, $baseurl, $file_ext);
+            if ( $this->get( 'sm.sign_urls' ) == 'true' ) {
+              $updated = $this->media_signature($updated);
+            }
           }
         }
 
